@@ -17,16 +17,17 @@ class IndexController extends Ifphp_SyndicateController
      */
     public function indexAction()
     {
-        $page = $this->getRequest()->getParam('page') ? $this->getRequest()->getParam('page') : 1;
         $limit = 5;
-        $posts = new Posts();
-        $this->view->posts = $posts->getRecent($page,$limit);
+
+        $page = $this->getRequest()->getParam('page') ? $this->getRequest()->getParam('page') : 1;
+    	$posts = new Posts();
+    	$this->view->posts = $posts->getRecent($page,$limit);
         $total = $posts->getRecent($page, 0,true)->total;
         $this->view->paginator = Zend_Paginator::factory($total);
         $this->view->paginator->setCurrentPageNumber($page);
         $this->view->paginator->setItemCountPerPage($limit);
-                 
- 		
+
+        $this->view->keywords = implode('', array('ifphp','news aggragator','support,'.$this->view->term));	
     }
     
     /**
@@ -47,15 +48,14 @@ class IndexController extends Ifphp_SyndicateController
         //here I will be testing the models
         $supports = new Supports();
         if($this->getRequest()->isGet() && 
-        	$this->getRequest()->getParam('term') != null
-        	
+        	$this->getRequest()->getParam('term') != null        	
         ){
         	$term = $this->getRequest()->getParam('term');        		
         	$result = $supports->search($term);
         	$this->view->supports = $result;
         	$this->view->term = $term;
         }
-        
+        $this->view->keywords = implode('', array('ifphp','news aggragator','support,'.$this->view->term));
     }
     
     public function clearAction()

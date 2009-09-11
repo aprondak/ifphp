@@ -7,7 +7,7 @@ class ErrorController extends Zend_Controller_Action
     {
         $errors = $this->_getParam('error_handler');
         
-//		Zend_Registry::get('logger')->err($errors->exception);
+		//Zend_Registry::get('logger')->err($errors->exception);
 
 		switch ($errors->type) { 
 		    case Zend_Controller_Plugin_ErrorHandler::EXCEPTION_NO_CONTROLLER:
@@ -23,7 +23,7 @@ class ErrorController extends Zend_Controller_Action
 		        $this->view->message = 'Application error';
 		        break;
 		}
-
+                Zend_Registry::getInstance()->logger->err($errors->exception);
 		$this->view->exception = $errors->exception;
 		$this->view->request = $errors->request;
     }

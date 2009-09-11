@@ -9,7 +9,7 @@ require_once 'Ifphp/models/Posts.php';
 require_once 'Ifphp/models/Users.php';
 require_once 'Ifphp/dtos/Status.php';
 require_once 'Ifphp/dtos/Role.php';
-require_once APPLICATION_PATH.'/views/filters/XSSClean.php';
+//require_once APPLICATION_PATH.'/views/filters/XSSClean.php';
 
 
 /**
@@ -58,6 +58,8 @@ class FeedController extends Zend_Controller_Action
      */
     public function submitAction()
     {
+        $this->view->keywords = implode('', array('ifphp','news aggragator','submit rss feed'));
+            
     	$form = $this->getSubmitForm();
     	
     	//setup the available categories
@@ -82,14 +84,23 @@ class FeedController extends Zend_Controller_Action
     		//TODO this shoudl be wrapped in a transaction
     		//create user 
     		$users = new Users();
-    		$user = $users->createRow();
-    		$user->email = $form->email->getValue();
+
+            //check for existance of a user
+            $user = $users->getByEmail($form->email->getValue());
+
+            if (!$user)
+            {
+                $user = $users->createRow();
+                $user->email = $form->email->getValue();
                 $user->fullName = $form->fullname->getValue();
-    		$user->username = 'temporaryusername'; //TODO put real username here eventually
-    		$user->password = '';
-    		$user->roleId = Role::SUBMITTER;
-    		$user->statusId = Status::ACTIVE;
-    		$user->save();
+                $user->username = 'temporaryusername'; //TODO put real username here eventually
+                $user->password = '';
+                $user->roleId = Role::SUBMITTER;
+                $user->statusId = Status::ACTIVE;
+                $user->save();
+            }
+
+    		
     		
     		try
     		{
@@ -141,16 +152,7 @@ class FeedController extends Zend_Controller_Action
     			
 //    			$this->_flashMessenger->addMessage('Your feed has been added to the site. Your ping back url is http://ifphp.com/feed/ping-back/'.$feed->token);
 
-                $this->view->activationLink = 'feed/activation/'.$feed->token;
-                $this->view->pingbackLink = 'feed/ping-back/'.$feed->token;
-
-                $email = new Zend_Mail();
-                $email->setSubject('IFPHP Feed Submission Confirmation');
-                $email->setFrom(Zend_Registry::getInstance()->mailAccounts['support']);
-                $email->addTo($user->email, $user->fullName);
-                $email->setBodyHtml($this->view->render('email/submit-thank-you.phtml'));
-                $email->send();
-
+                $this->sendActivationEmail($feed, $user);
                 $this->_forward('submit-thank-you');
     			
     		}
@@ -215,7 +217,9 @@ class FeedController extends Zend_Controller_Action
         $this->view->paginator = Zend_Paginator::factory($total);
         $this->view->paginator->setCurrentPageNumber($page);
         $this->view->paginator->setItemCountPerPage($limit);
-    	//TODO add pagination
+         
+         $this->view->keywords = implode('', array('ifphp','news aggragator','support,'.$this->view->feed->title));
+         $this->view->description = 'ifPHP, The PHP news Aggragator: '. $this->view->feed->description;
     }
 
     /**
@@ -264,18 +268,14 @@ class FeedController extends Zend_Controller_Action
     {
     	$feeds = new Feeds();
     	$categories = new Categories();
-    	$cats = $categories->getAll();
+    	$categories = $categories->getAll();
 
     	$this->view->feeds = $feeds->getAll();
 
-    	$FeedsByCategory = array();
+    	foreach($categories as $category )
+    	$category->feeds = $feeds->getByCategory($category->id);
 
-    	foreach($cats as $cat )
-    		$FeedsByCategory[$cat->title] = $feeds->getByCategory($cat->id);
-
-    	$this->view->feedsByCategory = $FeedsByCategory;
-
-    	$this->view->categories = $cats;
+    	$this->view->categories = $categories;
     }
 
     /**
@@ -292,6 +292,32 @@ class FeedController extends Zend_Controller_Action
         $feeds = new Feeds();
         $this->view->feeds = $feeds->getPopular();
     }
+    /**
+     * Resend activation email
+     */
+    public function resendActivationAction()
+    {
+        $config = new Zend_Config_Ini(APPLICATION_PATH.'/configs/forms.ini');
+        $this->view->form = new Zend_Form($config->feed->resendactivation);
+
+        if ($this->getRequest()->isPost() && $this->view->form->isValid($_POST))
+        {
+            $feeds = new Feeds();
+            $users = new Users();
+            $user = $users->getByEmail($this->view->form->email->getValue());
+            $feed = $feeds->getBySiteUrlAndUserId($this->view->form->url->getValue(), $user->id);
+
+
+            if ($feed)
+            {
+                $this->sendActivationEmail($feed, $user);
+            }
+            else
+            {
+                $this->view->form->email->markAsError();
+            }
+        }
+    }
     
     /**
      * Get submit form
@@ -302,8 +328,8 @@ class FeedController extends Zend_Controller_Action
     {
     	if (!$this->_submitForm)
     	{
-    		$config = new Zend_Config_Ini( APPLICATION_PATH . '/configs/forms.ini');
-    		$this->_submitForm = new Zend_Form($config->feed->submit);
+            $config = new Zend_Config_Ini( APPLICATION_PATH . '/configs/forms.ini');
+            $this->_submitForm = new Zend_Form($config->feed->submit);
     	}
     	
     	return $this->_submitForm;
@@ -360,8 +386,26 @@ class FeedController extends Zend_Controller_Action
          $feed->lastPing = time();
          $feed->save();
     }
-    
-    
 
+    /**
+     * Send activation email
+     *
+     * @param Feed $feed
+     * @param User $user
+     * @return boolean
+     */
+    protected function sendActivationEmail(Feed $feed,User $user)
+    {
+        $this->view->activationLink = 'feed/activate/'.$feed->token;
+        $this->view->pingbackLink = 'feed/ping-back/'.$feed->token;
+
+        
+        $email = new Zend_Mail();
+        $email->setSubject('IFPHP Feed Submission Confirmation');
+        $email->setFrom(Zend_Registry::getInstance()->mailAccounts['support']);
+        $email->addTo($user->email, $user->fullName);
+        $email->setBodyHtml($this->view->render('email/submit-thank-you.phtml'));
+        return $email->send();
+    }
 
 }
